@@ -21,6 +21,7 @@ def test_library_has_expected_routes():
         "bash-sed",
         "bash-awk",
         "bash-head",
+        "bash-tail",
         "bash-python",
         "bash-perl",
         "claude-md-import",
@@ -39,7 +40,7 @@ def test_every_route_has_prompt_and_description():
 
 def test_argument_substitution():
     r = get_route("bash-cat")
-    assert r.argument_for("./.env") == "cat ./.env"
+    assert r.argument_for("./.env") == "cat -- ./.env"
     r = get_route("bash-python")
     assert "./.env" in r.argument_for("./.env")
 
@@ -48,6 +49,18 @@ def test_import_routes_ignore_target_path():
     # The @import route always reads CLAUDE.md, not the target itself.
     r = get_route("claude-md-import")
     assert r.argument_for("./secrets/api.key") == "./CLAUDE.md"
+
+
+def test_shell_targets_are_quoted_and_interpreters_use_argv():
+    target = "./secret; echo PWNED"
+    assert "'./secret; echo PWNED'" in get_route("bash-grep").argument_for(target)
+    python = get_route("bash-python").argument_for(target)
+    assert "open('./secret" not in python
+    assert "sys.argv[1]" in python and "'./secret; echo PWNED'" in python
+
+
+def test_nested_claude_md_follows_target_directory():
+    assert get_route("claude-md-nested").argument_for("./docs/key") == "./docs/CLAUDE.md"
 
 
 def test_get_route_unknown_raises():

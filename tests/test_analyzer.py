@@ -52,6 +52,7 @@ def test_read_only_deny_blocks_only_read():
         "bash-sed",
         "bash-awk",
         "bash-head",
+        "bash-tail",
         "bash-python",
         "bash-perl",
         "claude-md-import",
@@ -66,7 +67,7 @@ def test_read_only_summary_counts():
     findings = audit(parse_rules(READ_ONLY), [TARGET])
     s = summarize(findings)[TARGET]
     assert s["routes"] == len(ROUTES)
-    assert s["leak"] == 10
+    assert s["leak"] == 11
     assert s["hold"] == 1
     assert s["meta"] == 1
 
