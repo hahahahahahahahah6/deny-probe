@@ -1,6 +1,6 @@
 """deny-probe: penetration tester for Claude Code permission deny rules."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 from .analyzer import Finding, audit, summarize
 from .routes import ROUTES, Route, get_route
