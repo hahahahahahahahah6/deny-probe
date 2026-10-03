@@ -70,6 +70,26 @@ def _glob_to_regex(pattern: str, path_like: bool) -> str:
         elif c == "?":
             out.append("[^/]" if path_like else ".")
             i += 1
+        elif c == "[":
+            end = p.find("]", i + 1)
+            if end < 0:
+                out.append(r"\[")
+                i += 1
+                continue
+            content = p[i + 1 : end]
+            negate = content.startswith(("!", "^"))
+            if negate:
+                content = content[1:]
+            if not content:
+                out.append(r"\[\]")
+            else:
+                # Preserve ranges while escaping characters with special
+                # meaning inside a regex character class.
+                safe = content.replace("\\", r"\\").replace("]", r"\]")
+                if path_like and "/" not in safe:
+                    safe += "/" if negate else ""
+                out.append("[" + ("^" if negate else "") + safe + "]")
+            i = end + 1
         else:
             out.append(re.escape(c))
             i += 1

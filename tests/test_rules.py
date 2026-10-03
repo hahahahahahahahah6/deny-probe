@@ -88,3 +88,20 @@ def test_grep_tool_rule():
 def test_dot_in_pattern_is_literal():
     r = DenyRule.parse("Read(./.env)")
     assert not r.matches("./aenv")  # '.' must not behave as regex wildcard
+
+
+@pytest.mark.parametrize("pattern,yes,no", [
+    ("Read(./key[0-9])", "./key7", "./keyx"),
+    ("Read(./key[abc])", "./keyb", "./keyz"),
+    ("Read(./key[!0-9])", "./keyx", "./key5"),
+    ("Read(./key[^abc])", "./keyz", "./keya"),
+])
+def test_character_classes(pattern, yes, no):
+    rule = DenyRule.parse(pattern)
+    assert rule.matches(yes)
+    assert not rule.matches(no)
+
+
+def test_three_or_more_stars_have_recursive_semantics():
+    rule = DenyRule.parse("Read(./secrets/***)")
+    assert rule.matches("./secrets/a/b")

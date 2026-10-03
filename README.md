@@ -15,7 +15,7 @@ Claude Code enforces `permissions.deny` rules **per tool**. A rule like
   file into context through a `Read(./CLAUDE.md)` call the rule doesn't cover),
 - nested `CLAUDE.md` files that are auto-loaded.
 
-deny-probe ships a built-in library of 12 such bypass routes, predicts
+deny-probe ships a built-in library of 13 such bypass routes, predicts
 statically which of your deny rules stop which route, and tells you exactly
 which rules to add.
 
@@ -61,7 +61,7 @@ bash-python       Bash    LEAK     -
 claude-md-import  Read    LEAK     -
 claude-md-nested  Read    LEAK     -
 
-Summary for ./.env: 10/12 routes leak content, 1 hold, 1 metadata-only.
+Summary for ./.env: 11/13 routes leak content, 1 hold, 1 metadata-only.
 
 Hardening suggestions:
   [grep-tool] Grep tool search
@@ -105,7 +105,8 @@ runs in CI.
 deny-probe routes
 ```
 
-Lists the 12 built-in bypass routes with descriptions and preconditions.
+Lists the 13 built-in bypass routes with descriptions and preconditions. Head
+and tail are separate routes so both command variants are evaluated.
 
 ## How the static prediction works
 

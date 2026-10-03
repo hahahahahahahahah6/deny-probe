@@ -13,7 +13,8 @@ _SUGGESTIONS: dict[str, list[str]] = {
     "bash-grep": ["Bash(grep *)"],
     "bash-sed": ["Bash(sed *)"],
     "bash-awk": ["Bash(awk *)"],
-    "bash-head": ["Bash(head *)", "Bash(tail *)"],
+    "bash-head": ["Bash(head *)"],
+    "bash-tail": ["Bash(tail *)"],
     "bash-python": ["Bash(python *)", "Bash(python3 *)"],
     "bash-perl": ["Bash(perl *)"],
     "claude-md-import": [

@@ -22,17 +22,25 @@ def load_rules_from_settings(path: str) -> list[str]:
     with open(path, encoding="utf-8") as fh:
         data = json.load(fh)
     if isinstance(data, list):
-        return [str(x) for x in data]
-    if isinstance(data, dict):
+        rules = data
+    elif isinstance(data, dict):
         perms = data.get("permissions", {})
         if isinstance(perms, dict) and isinstance(perms.get("deny"), list):
-            return [str(x) for x in perms["deny"]]
-        if isinstance(data.get("deny"), list):
-            return [str(x) for x in data["deny"]]
-    raise ValueError(
-        f"{path}: expected a JSON list of rules or an object with "
-        "permissions.deny (Claude Code settings.json format)"
-    )
+            rules = perms["deny"]
+        elif isinstance(data.get("deny"), list):
+            rules = data["deny"]
+        else:
+            rules = None
+    else:
+        rules = None
+    if rules is None:
+        raise ValueError(
+            f"{path}: expected a JSON list of rules or an object with "
+            "permissions.deny (Claude Code settings.json format)"
+        )
+    if not all(isinstance(rule, str) for rule in rules):
+        raise ValueError(f"{path}: every deny rule must be a string")
+    return rules
 
 
 def collect_rules(args) -> list[DenyRule]:
@@ -47,7 +55,16 @@ def collect_rules(args) -> list[DenyRule]:
 
 
 def _norm_target(t: str) -> str:
-    return t if t.startswith("./") or t.startswith("/") else "./" + t
+    expanded = os.path.expanduser(t)
+    normalized = os.path.normpath(expanded)
+    if os.path.isabs(normalized):
+        return normalized
+    return "./" + normalized
+
+
+def _unique_targets(targets: list[str]) -> list[str]:
+    """Normalize and de-duplicate targets without changing user order."""
+    return list(dict.fromkeys(_norm_target(target) for target in targets))
 
 
 def format_table(findings, rules, targets) -> str:
@@ -91,7 +108,7 @@ def cmd_audit(args) -> int:
     except (ValueError, OSError) as exc:
         print(f"deny-probe: error: {exc}", file=sys.stderr)
         return 2
-    targets = [_norm_target(t) for t in (args.target or [DEFAULT_TARGET])]
+    targets = _unique_targets(args.target or [DEFAULT_TARGET])
     findings = audit(rules, targets)
 
     if args.format == "json":
@@ -129,6 +146,9 @@ def cmd_audit(args) -> int:
 
 
 def cmd_live(args) -> int:
+    if not args.canary:
+        print("deny-probe: error: --canary must not be empty", file=sys.stderr)
+        return 2
     target = _norm_target(args.target or DEFAULT_TARGET)
     route_ids = [r.id for r in ROUTES] if args.all else [args.route or "bash-cat"]
     reports = []
