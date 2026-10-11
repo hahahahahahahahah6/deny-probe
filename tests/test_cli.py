@@ -13,7 +13,7 @@ def test_audit_json_reports_leaks_and_exit_1(capsys):
     payload = json.loads(capsys.readouterr().out)
     t0 = payload["targets"][0]
     assert t0["target"] == "./.env"
-    assert t0["summary"]["leak"] == 11
+    assert t0["summary"]["leak"] == 16
     by_route = {f["route"]: f for f in t0["findings"]}
     assert by_route["read-direct"]["verdict"] == "HOLD"
     assert by_route["bash-python"]["verdict"] == "LEAK"
@@ -23,8 +23,9 @@ def test_audit_json_reports_leaks_and_exit_1(capsys):
 
 def test_audit_hardened_exits_0(capsys):
     rules = [
-        "Read(./.env)", "Grep(./.env)", "Glob(./.env)",
-        "Bash(cat *)", "Bash(grep *)", "Bash(sed *)", "Bash(awk *)",
+        "Read(./.env)", "Read(./.env*)", "Grep(./.env)", "Glob(./.env)",
+        "Bash(cat *)", "Bash(*cat ./.env*)",
+        "Bash(grep *)", "Bash(sed *)", "Bash(awk *)",
         "Bash(head *)", "Bash(tail *)", "Bash(python *)", "Bash(python3 *)",
         "Bash(perl *)", "Read(./CLAUDE.md)", "Read(./**/CLAUDE.md)",
     ]
@@ -34,7 +35,7 @@ def test_audit_hardened_exits_0(capsys):
     assert main(argv) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["targets"][0]["summary"] == {
-        "routes": 13, "leak": 0, "hold": 13, "meta": 0,
+        "routes": 18, "leak": 0, "hold": 18, "meta": 0,
     }
 
 
@@ -59,7 +60,7 @@ def test_audit_malformed_rule_exits_2(capsys):
 def test_routes_lists_library(capsys):
     assert main(["routes", "--format", "json"]) == 0
     data = json.loads(capsys.readouterr().out)
-    assert len(data) == 13
+    assert len(data) == 18
     assert {d["id"] for d in data} >= {"read-direct", "bash-python", "claude-md-import"}
 
 

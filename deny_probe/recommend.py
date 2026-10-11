@@ -22,6 +22,27 @@ _SUGGESTIONS: dict[str, list[str]] = {
         "or remove the @-import of the secret from CLAUDE.md",
     ],
     "claude-md-nested": ["Read(./**/CLAUDE.md)"],
+    # Regression routes (Claude Code 2.1.287 / 2.1.289 fixes): exact-string
+    # rules never match the mutated command line, so the suggestion is a
+    # wildcard anchored on both sides of the dangerous command.
+    "read-symlink": [
+        "Read({target}*)  (an exact-path Read rule never matches the symlink path)"
+    ],
+    "bash-env-prefix": [
+        "Bash(*cat {target}*)  (leading wildcard: env-var prefixes and bare "
+        "assignments change where the command starts)"
+    ],
+    "bash-bare-assign": [
+        "Bash(*cat {target}*)  (leading wildcard: env-var prefixes and bare "
+        "assignments change where the command starts)"
+    ],
+    "bash-redirect-suffix": [
+        "Bash(*cat {target}*)  (trailing wildcard: redirections change where "
+        "the command ends)"
+    ],
+    "bash-compound-nested": [
+        "Bash(*cat {target}*)  (leading wildcard covers the nested command)"
+    ],
 }
 
 GENERAL_NOTE = (
@@ -31,6 +52,35 @@ GENERAL_NOTE = (
     "fragile -- new interpreters and flags appear constantly -- so prefer "
     "keeping secrets out of the working directory, or enforce with hooks."
 )
+
+EXPLOSIVE_NOTE = (
+    "Explosive (trigger-based) injections are dormant by design: your deny "
+    "rules never see the payload, only the actions it takes once triggered. "
+    "Blocking every route below is the backstop. For the trigger half, use a "
+    "PreToolUse hook that scans incoming context (pasted text, fetched pages, "
+    "repo files) for trigger-shaped instructions -- deny rules cannot do that."
+)
+
+
+def suggest_explosive(finding, target: str) -> list[dict]:
+    """Hardening suggestions for one EXPOSED explosive finding.
+
+    One entry per open route, reusing the same rule templates as the main
+    audit so the advice stays consistent.
+    """
+    from .routes import get_route
+
+    recs = []
+    for rid in finding.open_routes:
+        route = get_route(rid)
+        recs.append(
+            {
+                "route": rid,
+                "route_name": route.name,
+                "add_rules": suggest(route, target),
+            }
+        )
+    return recs
 
 
 def suggest(route: Route, target: str) -> list[str]:

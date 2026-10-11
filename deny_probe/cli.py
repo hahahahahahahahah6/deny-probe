@@ -9,8 +9,15 @@ import sys
 
 from . import __version__
 from .analyzer import HOLD, LEAK, META, audit, summarize
+from .explosive import (
+    EXPOSED,
+    EXPLOSIVE_PROBES,
+    audit_explosive,
+    get_probe,
+    summarize_explosive,
+)
 from .live import LiveError, run_live
-from .recommend import GENERAL_NOTE, suggestions_for_leaks
+from .recommend import EXPLOSIVE_NOTE, GENERAL_NOTE, suggest_explosive, suggestions_for_leaks
 from .routes import ROUTES, get_route
 from .rules import DenyRule, parse_rules
 
@@ -186,6 +193,123 @@ def cmd_live(args) -> int:
     return 1 if any(r["verdict"] == LEAK for r in reports) else 0
 
 
+def cmd_explosive(args) -> int:
+    if args.list:
+        if args.format == "json":
+            print(
+                json.dumps(
+                    [
+                        {
+                            "id": p.id,
+                            "name": p.name,
+                            "trigger_kind": p.trigger_kind,
+                            "trigger": p.trigger,
+                            "routes": list(p.routes),
+                            "action": p.action.format(target="{target}"),
+                            "description": p.description,
+                            "precondition": p.precondition,
+                        }
+                        for p in EXPLOSIVE_PROBES
+                    ],
+                    indent=2,
+                )
+            )
+        else:
+            print(f"{'ID':<18}{'TRIGGER KIND':<16}NAME / TRIGGER")
+            print("-" * 70)
+            for p in EXPLOSIVE_PROBES:
+                print(f"{p.id:<18}{p.trigger_kind:<16}{p.name}")
+                print(f"{'':<18}{'':<16}wakes on: {p.trigger}")
+        return 0
+
+    try:
+        rules = collect_rules(args)
+    except (ValueError, OSError) as exc:
+        print(f"deny-probe: error: {exc}", file=sys.stderr)
+        return 2
+    targets = _unique_targets(args.target or [DEFAULT_TARGET])
+
+    if args.format == "json":
+        payload = {
+            "targets": [
+                {
+                    "target": t,
+                    "deny_rules": [r.raw for r in rules],
+                    "summary": summarize_explosive(audit_explosive(rules, t)),
+                    "findings": [
+                        {
+                            "probe": f.probe.id,
+                            "probe_name": f.probe.name,
+                            "trigger_kind": f.probe.trigger_kind,
+                            "trigger": f.probe.trigger,
+                            "action": f.probe.action.format(target=t),
+                            "verdict": f.verdict,
+                            "route_verdicts": f.route_verdicts,
+                            "open_routes": f.open_routes,
+                            "blocking_rules": f.blocking_rules,
+                            "recommendations": suggest_explosive(f, t),
+                        }
+                        for f in audit_explosive(rules, t)
+                    ],
+                }
+                for t in targets
+            ],
+            "explosive_note": EXPLOSIVE_NOTE,
+        }
+        print(json.dumps(payload, indent=2))
+    else:
+        lines: list[str] = []
+        for t in targets:
+            findings = audit_explosive(rules, t)
+            s = summarize_explosive(findings)
+            lines.append(f"Target: {t}")
+            lines.append(f"Deny rules ({len(rules)}):")
+            for r in rules:
+                lines.append(f"  {r.raw}")
+            lines.append("")
+            lines.append(f"{'PROBE':<18}{'VERDICT':<9}TRIGGER -> OPEN ROUTES")
+            lines.append("-" * 70)
+            for f in findings:
+                detail = (
+                    ", ".join(f.open_routes) if f.open_routes else "all held"
+                )
+                lines.append(
+                    f"{f.probe.id:<18}{f.verdict:<9}"
+                    f"{f.probe.trigger_kind}: {detail}"
+                )
+            lines.append("")
+            lines.append(
+                f"Summary for {t}: {s['exposed']}/{s['probes']} explosive "
+                f"probes exposed, {s['safe']} safe."
+            )
+            exposed = [f for f in findings if f.verdict == EXPOSED]
+            if exposed:
+                lines.append("")
+                lines.append("Hardening suggestions:")
+                for f in exposed:
+                    recs = suggest_explosive(f, t)
+                    if not recs:
+                        continue
+                    lines.append(
+                        f"[{f.probe.id}] {f.probe.name} -- wakes on: {f.probe.trigger}"
+                    )
+                    for rec in recs:
+                        lines.append(f"  [{rec['route']}] {rec['route_name']}")
+                        for rule in rec["add_rules"]:
+                            lines.append(f"    + {rule}")
+            lines.append("")
+            lines.append(f"Note: {EXPLOSIVE_NOTE}")
+            lines.append("")
+        sys.stdout.write("\n".join(lines).rstrip() + "\n")
+
+    any_exposed = any(
+        f.verdict == EXPOSED
+        for t in targets
+        for f in audit_explosive(rules, t)
+    )
+    return 1 if any_exposed else 0
+
+
 def cmd_routes(args) -> int:
     if args.format == "json":
         print(
@@ -244,6 +368,17 @@ def build_parser() -> argparse.ArgumentParser:
     r = sub.add_parser("routes", help="List the built-in bypass route library.")
     r.add_argument("--format", choices=["table", "json"], default="table")
     r.set_defaults(func=cmd_routes)
+
+    e = sub.add_parser(
+        "explosive",
+        help="Audit deny rules against the explosive (trigger-based injection) probe pack.",
+    )
+    e.add_argument("--settings", help="Path to Claude Code settings.json")
+    e.add_argument("--deny", action="append", help="A deny rule like 'Read(./.env)' (repeatable)")
+    e.add_argument("--target", action="append", help="File to protect (default: ./.env)")
+    e.add_argument("--format", choices=["table", "json"], default="table")
+    e.add_argument("--list", action="store_true", help="List the probes without auditing")
+    e.set_defaults(func=cmd_explosive)
     return p
 
 

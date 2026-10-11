@@ -23,11 +23,16 @@ def verdicts(rules, target=TARGET):
 READ_ONLY = ["Read(./.env)"]
 
 # A hardened config covering every tool family in the route library.
+# The two wildcard rules close the 2.1.287/2.1.289 regression routes: an
+# exact-string Bash/Read rule never matches the mutated command line or the
+# symlink path.
 HARDENED = [
     "Read(./.env)",
+    "Read(./.env*)",
     "Grep(./.env)",
     "Glob(./.env)",
     "Bash(cat *)",
+    "Bash(*cat ./.env*)",
     "Bash(grep *)",
     "Bash(sed *)",
     "Bash(awk *)",
@@ -57,6 +62,12 @@ def test_read_only_deny_blocks_only_read():
         "bash-perl",
         "claude-md-import",
         "claude-md-nested",
+        # 2.1.287 / 2.1.289 regression routes: exact-string rules never match.
+        "read-symlink",
+        "bash-env-prefix",
+        "bash-bare-assign",
+        "bash-redirect-suffix",
+        "bash-compound-nested",
     ):
         assert v[rid] == LEAK, rid
     # ...and Glob only leaks metadata.
@@ -67,7 +78,7 @@ def test_read_only_summary_counts():
     findings = audit(parse_rules(READ_ONLY), [TARGET])
     s = summarize(findings)[TARGET]
     assert s["routes"] == len(ROUTES)
-    assert s["leak"] == 11
+    assert s["leak"] == 16
     assert s["hold"] == 1
     assert s["meta"] == 1
 
@@ -128,6 +139,10 @@ def test_summarize_multiple_targets():
     assert s["./.env"]["hold"] == len(ROUTES)
     # ./other.txt is not denied at all, but the CLAUDE.md import routes are
     # still covered (their argument doesn't depend on the target).
-    assert s["./other.txt"]["leak"] == 2  # read-direct + grep-tool
+    # Four of the five regression routes leak too: the wildcard-hardened
+    # rules are anchored on ./.env, so they match nothing for ./other.txt.
+    # (bash-redirect-suffix is held by Bash(cat *), whose trailing wildcard
+    # already swallows the redirect.)
+    assert s["./other.txt"]["leak"] == 6  # read-direct + grep-tool + 4 regression routes
     assert s["./other.txt"]["meta"] == 1
-    assert s["./other.txt"]["hold"] == len(ROUTES) - 3
+    assert s["./other.txt"]["hold"] == len(ROUTES) - 7

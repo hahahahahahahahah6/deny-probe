@@ -26,6 +26,12 @@ def test_library_has_expected_routes():
         "bash-perl",
         "claude-md-import",
         "claude-md-nested",
+        # Regression routes for Claude Code 2.1.287 / 2.1.289 fixes.
+        "read-symlink",
+        "bash-env-prefix",
+        "bash-bare-assign",
+        "bash-redirect-suffix",
+        "bash-compound-nested",
     }
     assert expected <= ids
 
@@ -73,3 +79,18 @@ def test_glob_is_metadata_only():
     assert all(
         r.leak_kind == "content" for r in ROUTES if r.id != "glob-tool"
     )
+
+
+def test_regression_route_arguments():
+    # The regression routes mutate the command line (or path) so that an
+    # exact-string deny rule no longer matches.
+    assert get_route("read-symlink").argument_for("./.env") == "./.env.via-link"
+    assert get_route("bash-env-prefix").argument_for("./.env") == 'TZ="$HOME" cat ./.env'
+    assert get_route("bash-bare-assign").argument_for("./.env") == "FOO=1 cat ./.env"
+    assert get_route("bash-redirect-suffix").argument_for("./.env") == "cat ./.env > /tmp/exfil"
+    assert get_route("bash-compound-nested").argument_for("./.env") == "echo ok && cat ./.env"
+    # None of them is the plain command the naive rule was written for.
+    for rid in ("bash-env-prefix", "bash-bare-assign", "bash-redirect-suffix",
+                "bash-compound-nested"):
+        arg = get_route(rid).argument_for("./.env")
+        assert arg != get_route("bash-cat").argument_for("./.env"), rid

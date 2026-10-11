@@ -31,6 +31,16 @@ def test_suggest_nested_claude_md():
     assert "Read(./**/CLAUDE.md)" in got
 
 
+def test_suggest_regression_routes_use_wildcards():
+    # The 2.1.287/2.1.289 regression routes are only closed by rules that
+    # match the full (mutated) command line or the symlink path.
+    assert suggest(get_route("read-symlink"), "./.env") == ["Read(./.env*)  (an exact-path Read rule never matches the symlink path)"]
+    for rid in ("bash-env-prefix", "bash-bare-assign", "bash-redirect-suffix",
+                "bash-compound-nested"):
+        got = suggest(get_route(rid), "./.env")
+        assert got and got[0].startswith("Bash(*cat ./.env*)"), rid
+
+
 def test_suggest_uses_target_pattern():
     got = suggest(get_route("grep-tool"), "./secrets/**")
     assert got == ["Grep(./secrets/**)"]
